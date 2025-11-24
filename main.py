@@ -73,27 +73,73 @@ def linkleri_getir(client):
 # 📨 TOPLU GÖNDERİM
 # ==========================================
 def herkese_gonder(abone_listesi, site, baslik, tarih, link, gorsel_url):
-    print(f"📤 {len(abone_listesi)} kişiye gönderiliyor: {baslik[:30]}...")
+    print(f"\n📨 GÖNDERİM BAŞLIYOR... Toplam Aday: {len(abone_listesi)}")
     
+    # Mesaj metni
     caption = (
         f"📢 <b>{site} - Yeni Etkinlik!</b>\n\n"
         f"🎯 <b>{baslik}</b>\n"
         f"📅 {tarih}\n\n"
         f"🔗 <a href='{link}'>Başvuru ve Detaylar</a>"
     )
+
+    gonderim_basarili = 0
     
-    for chat_id in abone_listesi:
-        if not chat_id.isdigit(): continue 
-        payload = {'chat_id': chat_id, 'caption': caption, 'parse_mode': 'HTML'}
+    for ham_id in abone_listesi:
+        # --- ID TEMİZLEME VE KONTROL ---
         try:
+            # Gelen veriyi string'e çevir ve boşlukları temizle
+            chat_id = str(ham_id).strip()
+            
+            # Başlık satırı veya boş satırsa atla
+            if chat_id.lower() in ["chat id", "id", "", "none"]:
+                continue
+            
+            # Eğer Google Sheet "12345.0" gibi nokta koyduysa temizle
+            if "." in chat_id:
+                chat_id = chat_id.split(".")[0]
+                
+            # Hala sayısal değilse hata ver ve geç
+            if not chat_id.isdigit():
+                print(f"   ⚠️ GEÇERSİZ ID FORMATI: '{ham_id}' -> Atlanıyor.")
+                continue
+                
+        except Exception as e:
+            print(f"   ❌ ID Okuma Hatası ({ham_id}): {e}")
+            continue
+
+        # --- GÖNDERİM ---
+        print(f"   ➡️ Gönderiliyor: {chat_id} ...", end="")
+        
+        payload = {'chat_id': chat_id, 'caption': caption, 'parse_mode': 'HTML'}
+        api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/"
+        
+        try:
+            # Önce fotoğraflı dene
             if gorsel_url and gorsel_url.startswith("http"):
                 payload['photo'] = gorsel_url
-                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto", data=payload)
+                r = requests.post(api_url + "sendPhoto", data=payload)
             else:
+                # Fotoğraf yoksa metin dene
+                payload.pop('photo', None) # Varsa photo anahtarını sil
                 payload['text'] = caption
-                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data=payload)
-            time.sleep(0.2) 
-        except: pass
+                r = requests.post(api_url + "sendMessage", data=payload)
+
+            # --- SONUÇ KONTROLÜ ---
+            if r.status_code == 200:
+                print(" ✅ BAŞARILI")
+                gonderim_basarili += 1
+            else:
+                # Telegram hata verdiyse (Örn: Bot engellenmiş, ID yanlış)
+                print(f" ❌ HATA (Kod: {r.status_code})")
+                print(f"      Telegram Cevabı: {r.text}")
+                
+        except Exception as e:
+            print(f" 💥 BAĞLANTI HATASI: {e}")
+            
+        time.sleep(0.1) # Spam olmasın diye bekleme
+
+    print(f"🏁 Gönderim Tamamlandı. Başarılı: {gonderim_basarili}/{len(abone_listesi)}")
 
 # ==========================================
 # 🕷️ TARAYICI & SCRAPING
@@ -266,3 +312,4 @@ if __name__ == "__main__":
     except Exception as e:
 
         print(f"🔥 Kritik Hata: {e}")
+
