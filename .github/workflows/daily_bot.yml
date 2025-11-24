@@ -1,0 +1,28 @@
+name: Etkinlik Botu
+
+on:
+  schedule:
+    # Türkiye saatiyle yaklaşık 09:00 - 10:00 arası çalışır (UTC 06:00)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Manuel test butonu
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodları Çek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Kütüphaneleri Yükle
+        run: pip install -r requirements.txt
+
+      - name: Botu Çalıştır
+        env:
+          G_SHEET_CREDS: ${{ secrets.G_SHEET_CREDS }}
+        run: python main.py
