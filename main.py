@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 # ==========================================
 # ⚙️ AYARLAR
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8442781722:AAFLT1kqp_0Wgao0Foav6GCCE0Rrf_X0CZ8"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 SHEET_ADI = "EtkinlikTakip"
 
 # ==========================================
@@ -312,4 +312,5 @@ if __name__ == "__main__":
     except Exception as e:
 
         print(f"🔥 Kritik Hata: {e}")
+
 
