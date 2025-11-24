@@ -108,26 +108,64 @@ def get_driver():
 
 # --- SCRAPING FONKSİYONLARI ---
 def scrape_anbean(driver, client, mevcut, aboneler):
-    print("\n🔍 Anbean Taranıyor...")
+    print("\n" + "="*30)
+    print("🔍 Anbean Taranıyor (Detaylı Mod)...")
+    url = "https://anbeankampus.co/etkinlikler/"
+    
     try:
-        driver.get("https://anbeankampus.co/etkinlikler/")
-        time.sleep(3)
+        driver.get(url)
+        time.sleep(7) # Bekleme süresini artırdık
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        for kart in soup.find_all("div", class_="mini-eventCard")[:5]:
-            link = "https://anbeankampus.co" + kart.find("a")['href']
-            if link in mevcut: continue
-            
-            baslik = kart.find("h6").text.strip()
-            img = kart.find("img", class_="mini-eventCard-HeaderImage")
-            gorsel = "https://anbeankampus.co" + img['src'] if img else None
-            
-            tarih = "Belirtilmemiş"
-            for d in kart.find_all("div", class_="mini-eventCard-dateItem"):
-                if "Son" in d.text: tarih = d.text.strip()
+        
+        # Kartları bul
+        kartlar = soup.find_all("div", class_="mini-eventCard")
+        print(f"   ℹ️ Sayfada {len(kartlar)} adet etkinlik kartı bulundu.")
+        
+        if len(kartlar) == 0:
+            print("   ⚠️ Kart bulunamadı! HTML yapısı değişmiş veya site yüklenmemiş olabilir.")
+            print("   İpucu: Sayfa kaynağını kontrol et.")
+            return
+
+        gonderilen_sayisi = 0
+        for i, kart in enumerate(kartlar[:5]):
+            try:
+                link_tag = kart.find("a")
+                if not link_tag:
+                    print(f"   ⚠️ {i+1}. kartta link etiketi yok.")
+                    continue
+                    
+                link = "https://anbeankampus.co" + link_tag['href']
                 
-            herkese_gonder(aboneler, "Anbean", baslik, tarih, link, gorsel)
-            link_kaydet(client, link, baslik, "Anbean")
-    except Exception as e: print(f"Anbean Hata: {e}")
+                # Link kontrolü
+                if link in mevcut:
+                    print(f"   ⏭️ {i+1}. Etkinlik pas geçildi (Zaten veritabanında var).")
+                    continue
+                
+                # Başlık çekme
+                baslik_div = kart.find("div", class_="mini-eventCard-titleDescription")
+                baslik = baslik_div.find("h6").text.strip() if baslik_div else "Başlık Yok"
+                
+                # Görsel çekme
+                img = kart.find("img", class_="mini-eventCard-HeaderImage")
+                gorsel = "https://anbeankampus.co" + img['src'] if img else None
+                
+                # Tarih çekme
+                tarih = "Belirtilmemiş"
+                for d in kart.find_all("div", class_="mini-eventCard-dateItem"):
+                    if "Son" in d.text: tarih = d.text.strip()
+
+                print(f"   ✅ Yeni etkinlik bulundu: {baslik}")
+                herkese_gonder(aboneler, "Anbean", baslik, tarih, link, gorsel)
+                link_kaydet(client, link, baslik, "Anbean")
+                gonderilen_sayisi += 1
+                
+            except Exception as e:
+                print(f"   ❌ Kart işlenirken hata: {e}")
+                
+        print(f"   🏁 Anbean tamamlandı. {gonderilen_sayisi} yeni gönderildi.")
+
+    except Exception as e: 
+        print(f"🔥 Anbean Genel Hata: {e}")
 
 def scrape_toptalent(driver, client, mevcut, aboneler):
     print("\n🔍 Toptalent Taranıyor...")
@@ -152,24 +190,59 @@ def scrape_toptalent(driver, client, mevcut, aboneler):
     except Exception as e: print(f"Toptalent Hata: {e}")
 
 def scrape_youthall(driver, client, mevcut, aboneler):
-    print("\n🔍 Youthall Taranıyor...")
+    print("\n" + "="*30)
+    print("🔍 Youthall Taranıyor (Detaylı Mod)...")
+    url = "https://www.youthall.com/tr/events/"
+    
     try:
-        driver.get("https://www.youthall.com/tr/events/")
-        time.sleep(3)
+        driver.get(url)
+        time.sleep(7) # Bekleme süresi arttı
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        for kart in soup.find_all("div", class_="events")[:5]:
-            link = "https://www.youthall.com" + kart.find("a")['href']
-            if link in mevcut: continue
-            
-            baslik = kart.find("h2").text.strip()
-            img_div = kart.find("div", class_="events__img")
-            img = img_div.find("img") if img_div else None
-            gorsel = "https://www.youthall.com" + img['src'] if img else None
-            tarih = kart.find("div", class_="events__content__details").text.strip() if kart.find("div", class_="events__content__details") else "Detaylar Sitede"
+        
+        kartlar = soup.find_all("div", class_="events")
+        print(f"   ℹ️ Sayfada {len(kartlar)} adet etkinlik kartı bulundu.")
 
-            herkese_gonder(aboneler, "Youthall", baslik, tarih, link, gorsel)
-            link_kaydet(client, link, baslik, "Youthall")
-    except Exception as e: print(f"Youthall Hata: {e}")
+        if len(kartlar) == 0:
+            print("   ⚠️ Kart bulunamadı! HTML class isimleri değişmiş olabilir.")
+            return
+
+        gonderilen_sayisi = 0
+        for i, kart in enumerate(kartlar[:5]):
+            try:
+                link_tag = kart.find("a")
+                if not link_tag: continue
+                
+                link = "https://www.youthall.com" + link_tag['href']
+                
+                if link in mevcut:
+                    print(f"   ⏭️ {i+1}. Etkinlik pas geçildi (Zaten veritabanında var).")
+                    continue
+                
+                baslik_tag = kart.find("h2")
+                if not baslik_tag:
+                     print(f"   ⚠️ {i+1}. kartta başlık (h2) yok.")
+                     continue
+                baslik = baslik_tag.text.strip()
+                
+                img_div = kart.find("div", class_="events__img")
+                img = img_div.find("img") if img_div else None
+                gorsel = "https://www.youthall.com" + img['src'] if img else None
+                
+                detay_div = kart.find("div", class_="events__content__details")
+                tarih = detay_div.text.strip() if detay_div else "Detaylar Sitede"
+
+                print(f"   ✅ Yeni etkinlik bulundu: {baslik}")
+                herkese_gonder(aboneler, "Youthall", baslik, tarih, link, gorsel)
+                link_kaydet(client, link, baslik, "Youthall")
+                gonderilen_sayisi += 1
+
+            except Exception as e: 
+                print(f"   ❌ Youthall Kart Hatası: {e}")
+                
+        print(f"   🏁 Youthall tamamlandı. {gonderilen_sayisi} yeni gönderildi.")
+
+    except Exception as e: 
+        print(f"🔥 Youthall Genel Hata: {e}")
 
 # ==========================================
 # 🏁 MAIN
@@ -191,4 +264,5 @@ if __name__ == "__main__":
         driver.quit()
         print("✅ İşlem Bitti.")
     except Exception as e:
+
         print(f"🔥 Kritik Hata: {e}")
