@@ -22,32 +22,34 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 SHEET_ADI = "EtkinlikTakip"
 
 # ==========================================
-# 🛠 YARDIMCI FONKSİYONLAR
+# 🛠 YARDIMCI FONKSİYONLAR (Gizlilik & Bekleme)
 # ==========================================
 def rastgele_bekle(min_s=3, max_s=7):
+    """İnsan gibi davranmak için rastgele bekleme"""
     sure = random.uniform(min_s, max_s)
     print(f"   ⏳ {sure:.2f} saniye bekleniyor...")
     time.sleep(sure)
 
 def get_stealth_driver():
+    """Bot yakalanmasını engelleyen özel sürücü ayarları"""
     ua = UserAgent()
     user_agent = ua.random
 
     opts = Options()
-    opts.add_argument("--headless") # Hata alırsan bunu yorum satırı yapıp izleyebilirsin
+    opts.add_argument("--headless") # Arka planda çalıştır
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument(f"user-agent={user_agent}")
     opts.add_argument("--window-size=1920,1080")
     
-    # Bot tespitini zorlaştıran ayarlar
+    # Selenium izlerini gizle
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option('useAutomationExtension', False)
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
     
-    # Navigator.webdriver özelliğini sil
+    # Navigator.webdriver bayrağını JavaScript ile sil
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return driver
@@ -65,11 +67,13 @@ def get_google_client():
     return gspread.authorize(creds)
 
 def kullanicilari_guncelle(client):
+    """Telegram abonelerini çeker"""
     try:
         sheet = client.open(SHEET_ADI).worksheet("Kullanicilar")
         kayitli_id_listesi = sheet.col_values(1)
         
         try:
+            # Yeni gelen mesajları kontrol et
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
             response = requests.get(url, timeout=10).json()
             
@@ -129,120 +133,75 @@ def herkese_gonder(abone_listesi, site, baslik, tarih, link, gorsel_url):
 
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}", data=payload, timeout=10)
             count += 1
-            time.sleep(0.1)
+            time.sleep(0.1) # API flood yapmamak için bekleme
         except: continue
     print(f"   ✅ {count} kişiye gönderildi.")
 
 # ==========================================
-# 🕷️ GÜNCELLENMİŞ SCRAPING MODÜLLERİ
+# 🕷️ SCRAPING FONKSİYONLARI (GÜNCEL HTML'E GÖRE)
 # ==========================================
-
-def scrape_anbean(driver, client, mevcut, aboneler):
-    print("\n🔍 Anbean Taranıyor...")
-    try:
-        driver.get("https://anbeankampus.co/etkinlikler/")
-        rastgele_bekle(5, 8)
-        
-        # Sayfanın tam yüklenmesini bekle
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "mini-eventCard"))
-            )
-        except: pass
-
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Yeni yapı: mini-eventCard class'ı
-        kartlar = soup.find_all("div", class_="mini-eventCard")
-
-        for kart in kartlar[:5]:
-            try:
-                # Link: <a href="/...">
-                link_tag = kart.find("a")
-                if not link_tag: continue
-                
-                href = link_tag.get('href', '')
-                link = "https://anbeankampus.co" + href if not href.startswith("http") else href
-                
-                if link in mevcut: continue
-                
-                # Başlık: <h6>
-                baslik_div = kart.find("div", class_="mini-eventCard-titleDescription")
-                baslik = baslik_div.find("h6").text.strip() if baslik_div else "Anbean Etkinliği"
-                
-                # Görsel
-                img = kart.find("img", class_="mini-eventCard-HeaderImage")
-                gorsel = img.get('srcset', '').split(" ")[0] if img and img.get('srcset') else (img.get('src') if img else None)
-                
-                # Tarih: .mini-eventCard-dateItem içindeki spanlar
-                tarihler = []
-                date_items = kart.find_all("div", class_="mini-eventCard-dateItem")
-                for item in date_items:
-                    spans = item.find_all("span")
-                    if len(spans) >= 2:
-                        tarihler.append(f"{spans[0].text}: {spans[1].text}")
-                
-                tarih_str = " | ".join(tarihler) if tarihler else "Detaylar Sitede"
-
-                herkese_gonder(aboneler, "Anbean", baslik, tarih_str, link, gorsel)
-                link_kaydet(client, link, baslik, "Anbean")
-                mevcut.append(link)
-            
-            except Exception as inner_e:
-                print(f"   ⚠️ Anbean kart hatası: {inner_e}")
-
-    except Exception as e: print(f"🔥 Anbean Genel Hata: {e}")
 
 def scrape_coderspace(driver, client, mevcut, aboneler):
     print("\n🔍 Coderspace Taranıyor...")
     try:
         driver.get("https://coderspace.io/etkinlikler")
-        rastgele_bekle(5, 9)
+        rastgele_bekle(5, 8)
         
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Yeni yapı: event-card class'ı
+        # Gönderdiğin HTML'e göre ana kart yapısı "event-card"
         kartlar = soup.find_all("div", class_="event-card")
 
-        for kart in kartlar[:6]:
+        for kart in kartlar[:8]: # İlk 8 etkinliği kontrol et
             try:
-                # Link: Başlıktaki a tagi veya resimdeki a tagi
-                link_tag = kart.find("h5").find("a") if kart.find("h5") else None
-                if not link_tag:
-                    img_container = kart.find("div", class_="event-card-image")
-                    if img_container: link_tag = img_container.find("a")
+                # 1. Link ve Başlık Çekme (h5 içindeki a tagi)
+                baslik_tag = kart.find("h5").find("a")
+                if not baslik_tag: continue
                 
-                if not link_tag: continue
-
-                href = link_tag.get('href', '')
+                href = baslik_tag.get('href', '')
                 link = "https://coderspace.io" + href if not href.startswith("http") else href
                 
+                baslik = baslik_tag.text.strip()
+
+                # 2. Kayıt Kontrolü (Daha önce gönderildi mi?)
                 if link in mevcut: continue
-                
-                # Başlık
-                baslik = link_tag.text.strip() if link_tag.text.strip() else "Coderspace Etkinliği"
-                if baslik == "Coderspace Etkinliği" and kart.find("h5"):
-                    baslik = kart.find("h5").text.strip()
 
-                # Görsel
-                img = kart.find("img")
-                gorsel = img.get('srcset', '').split(" ")[0] if img and img.get('srcset') else (img.get('src') if img else None)
-                if gorsel and not gorsel.startswith("http"): gorsel = "https://coderspace.io" + gorsel
+                # 3. Durum Kontrolü (Başvurular kapandı mı?)
+                # HTML'de "primary-button--disabled" class'ı varsa etkinlik bitmiştir.
+                disabled_btn = kart.find("a", class_="primary-button--disabled")
+                if disabled_btn:
+                    # Opsiyonel: Eğer sadece aktifleri istiyorsak burada continue diyebiliriz.
+                    # Ancak bazen "Tamamlandı" bilgisini de görmek isteyebilirsiniz.
+                    # Şimdilik pas geçiyoruz (aktif değilse gönderme)
+                    print(f"   ℹ️ Pas geçildi (Başvuru kapalı): {baslik}")
+                    continue
 
-                # Tarih ve Bilgiler: ul.event-card-info içindeki li'ler
-                info_list = []
-                info_ul = kart.find("ul", class_="event-card-info")
-                if info_ul:
-                    lis = info_ul.find_all("li")
-                    for li in lis:
-                        label = li.find("span").text.strip() if li.find("span") else ""
-                        val = li.find("strong").text.strip() if li.find("strong") else ""
+                # 4. Görsel Çekme
+                img_tag = kart.find("div", class_="event-card-image").find("img")
+                gorsel = None
+                if img_tag:
+                    # srcset varsa en yüksek çözünürlüğü al, yoksa src
+                    if img_tag.get('srcset'):
+                        gorsel = img_tag.get('srcset').split(" ")[0] 
+                    else:
+                        gorsel = img_tag.get('src')
+
+                # 5. Tarih ve Detaylar (ul > li yapısı)
+                tarihler = []
+                info_list = kart.find("ul", class_="event-card-info")
+                if info_list:
+                    items = info_list.find_all("li")
+                    for item in items:
+                        label = item.find("span").text.strip() if item.find("span") else ""
+                        val = item.find("strong").text.strip() if item.find("strong") else ""
                         if label and val:
-                            info_list.append(f"{label}: {val}")
+                            tarihler.append(f"{label}: {val}")
                 
-                tarih_str = " | ".join(info_list) if info_list else "Detaylar Sitede"
+                tarih_str = " | ".join(tarihler) if tarihler else "Detaylar Sitede"
 
-                # Tamamlandı kontrolü (Buton disable ise geç)
-                btn = kart.find("a", class_="primary-button--disabled")
-                if btn: continue # Etkinlik bitmiş
+                # 6. Tür (Bootcamp, Hackathon vs.)
+                tur_tag = kart.find("span", class_="event-card-type")
+                if tur_tag:
+                    tarih_str = f"[{tur_tag.text.strip()}] {tarih_str}"
 
                 herkese_gonder(aboneler, "Coderspace", baslik, tarih_str, link, gorsel)
                 link_kaydet(client, link, baslik, "Coderspace")
@@ -253,25 +212,64 @@ def scrape_coderspace(driver, client, mevcut, aboneler):
 
     except Exception as e: print(f"🔥 Coderspace Genel Hata: {e}")
 
-def scrape_youthall(driver, client, mevcut, aboneler):
-    print("\n🔍 Youthall Taranıyor...")
+def scrape_anbean(driver, client, mevcut, aboneler):
+    print("\n🔍 Anbean Taranıyor...")
     try:
-        # Linki güncelledik
-        driver.get("https://www.youthall.com/tr/events/")
+        driver.get("https://anbeankampus.co/etkinlikler/")
         rastgele_bekle(5, 8)
         
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Yeni yapı: div.events (l-grid__col içindeler)
+        # Yapı: mini-eventCard
+        kartlar = soup.find_all("div", class_="mini-eventCard")
+
+        for kart in kartlar[:5]:
+            try:
+                link_tag = kart.find("a")
+                if not link_tag: continue
+                
+                href = link_tag.get('href', '')
+                link = "https://anbeankampus.co" + href if not href.startswith("http") else href
+                
+                if link in mevcut: continue
+                
+                baslik_div = kart.find("div", class_="mini-eventCard-titleDescription")
+                baslik = baslik_div.find("h6").text.strip() if baslik_div else "Anbean Etkinliği"
+                
+                img = kart.find("img", class_="mini-eventCard-HeaderImage")
+                gorsel = img.get('srcset', '').split(" ")[0] if img and img.get('srcset') else (img.get('src') if img else None)
+                
+                # Tarihleri topla
+                tarihler = []
+                date_items = kart.find_all("div", class_="mini-eventCard-dateItem")
+                for item in date_items:
+                    spans = item.find_all("span")
+                    if len(spans) >= 2:
+                        tarihler.append(f"{spans[0].text}: {spans[1].text}")
+                
+                tarih_str = " | ".join(tarihler) if tarihler else "Sitede kontrol ediniz"
+
+                herkese_gonder(aboneler, "Anbean", baslik, tarih_str, link, gorsel)
+                link_kaydet(client, link, baslik, "Anbean")
+                mevcut.append(link)
+            except: pass
+
+    except Exception as e: print(f"🔥 Anbean Genel Hata: {e}")
+
+def scrape_youthall(driver, client, mevcut, aboneler):
+    print("\n🔍 Youthall Taranıyor...")
+    try:
+        # İstenilen Link
+        driver.get("https://www.youthall.com/tr/events/")
+        rastgele_bekle(5, 9)
+        
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        # Yapı: div.events
         kartlar = soup.find_all("div", class_="events")
 
         for kart in kartlar[:6]:
             try:
-                # Link: En dıştaki <a> tagi veya içindeki
                 link_tag = kart.find("a")
-                # Eğer kartın kendisi link değilse içini ara
-                if not link_tag and kart.parent.name == 'a':
-                    link_tag = kart.parent
-                
+                if not link_tag and kart.parent.name == 'a': link_tag = kart.parent
                 if not link_tag: continue
 
                 href = link_tag.get('href', '')
@@ -279,35 +277,27 @@ def scrape_youthall(driver, client, mevcut, aboneler):
                 
                 if link in mevcut: continue
                 
-                # Başlık: events__content__title > h2
+                # Başlık
                 title_div = kart.find("div", class_="events__content__title")
                 baslik = title_div.find("h2").text.strip() if title_div else "Youthall Etkinliği"
                 
-                # Görsel: events__img > img
+                # Görsel
                 img_div = kart.find("div", class_="events__img")
                 img = img_div.find("img") if img_div else None
                 gorsel = img.get('src') if img else None
                 if gorsel and not gorsel.startswith("http"): gorsel = "https://www.youthall.com" + gorsel
 
-                # Tarih ve Yer: events__content__details içindeki divler
+                # Tarih ve Detay
                 details_div = kart.find("div", class_="events__content__details")
                 tarih_str = "Detaylar Sitede"
                 if details_div:
-                    sub_divs = details_div.find_all("div")
-                    bilgiler = [d.text.strip() for d in sub_divs if d.text.strip()]
+                    bilgiler = [d.text.strip() for d in details_div.find_all("div") if d.text.strip()]
                     tarih_str = " | ".join(bilgiler)
-
-                # Kategori
-                cat_div = kart.find("div", class_="events__img-category")
-                if cat_div:
-                    tarih_str = f"[{cat_div.text.strip()}] {tarih_str}"
 
                 herkese_gonder(aboneler, "Youthall", baslik, tarih_str, link, gorsel)
                 link_kaydet(client, link, baslik, "Youthall")
                 mevcut.append(link)
-
-            except Exception as inner_e:
-                print(f"   ⚠️ Youthall kart hatası: {inner_e}")
+            except: pass
 
     except Exception as e: print(f"🔥 Youthall Genel Hata: {e}")
 
@@ -318,11 +308,9 @@ def scrape_techcareer(driver, client, mevcut, aboneler):
         rastgele_bekle(5, 8)
         soup = BeautifulSoup(driver.page_source, "html.parser")
         
-        # Link bazlı tarama (HTML yapısı çok dinamik olduğu için)
         tum_linkler = soup.find_all("a", href=True)
         bootcamp_linkleri = [a for a in tum_linkler if "/bootcamp/" in a['href'] and len(a['href']) > 25]
         
-        # Benzersizleştirme
         unique_links = []
         [unique_links.append(x) for x in bootcamp_linkleri if x['href'] not in [y['href'] for y in unique_links]]
 
@@ -333,7 +321,6 @@ def scrape_techcareer(driver, client, mevcut, aboneler):
             baslik = "Techcareer Bootcamp"
             parent = tag.find_parent("div")
             if parent:
-                # Başlık genellikle linkin içindeki veya yanındaki H taglerindedir
                 h_tags = parent.find_all(["h2", "h3", "h4", "p"])
                 for h in h_tags:
                     if len(h.text) > 5:
@@ -351,35 +338,27 @@ def scrape_techcareer(driver, client, mevcut, aboneler):
     except Exception as e: print(f"⚠️ Techcareer Hatası: {e}")
 
 # ==========================================
-# 🏁 ANA DÖNGÜ
+# 🏁 ANA PROGRAM
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 GELİŞMİŞ BOT BAŞLATILIYOR...")
+    print("🚀 BOT BAŞLIYOR... (Tüm HTML Yapıları Güncellendi)")
     
     try:
         client = get_google_client()
         aboneler = kullanicilari_guncelle(client)
-        mevcut_linkler = linkleri_getir(client)
+        if not aboneler: print("⚠️ Abone bulunamadı, sadece tarama yapılacak.")
         
-        if not aboneler: 
-            print("⚠️ Hiç abone yok (veya Sheet erişim hatası), yine de tarama yapılıyor...")
-
+        mevcut_linkler = linkleri_getir(client)
         driver = get_stealth_driver()
         
-        # 1. Anbean
+        # Sırayla tüm siteleri tara
         scrape_anbean(driver, client, mevcut_linkler, aboneler)
-        
-        # 2. Coderspace
         scrape_coderspace(driver, client, mevcut_linkler, aboneler)
-        
-        # 3. Youthall
         scrape_youthall(driver, client, mevcut_linkler, aboneler)
-        
-        # 4. Techcareer (Zaten çalışıyordu)
         scrape_techcareer(driver, client, mevcut_linkler, aboneler)
         
         driver.quit()
-        print("\n✅ İşlem Tamamlandı.")
+        print("\n✅ Tüm işlemler tamamlandı.")
         
     except Exception as e:
-        print(f"\n🔥 KRİTİK ANA HATA: {e}")
+        print(f"\n🔥 KRİTİK HATA: {e}")
