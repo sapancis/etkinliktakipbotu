@@ -3,4 +3,5 @@ webdriver-manager
 beautifulsoup4
 requests
 gspread
+fake-useragent
 oauth2client
