@@ -4,7 +4,7 @@ on:
   # 1. Zamanlanmış Tetikleyici (Cron Job)
   schedule:
     # UTC saatiyle 07:00'de çalışır.
-    # Türkiye (UTC+3) saatiyle sabah 10:00'a denk gelir.
+    # Türkiye (UTC+3) saatiyle sabah 10:00'a dsenk gelir.
     # Saati değiştirmek için: https://crontab.guru/
     - cron: '0 7 * * *'
   
