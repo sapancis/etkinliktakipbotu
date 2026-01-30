@@ -15,15 +15,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 
-# ==========================================
-# ⚙️ AYARLAR
-# ==========================================
+#Bu alanlar environment kısmına gizli olarak girilmeli.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 SHEET_ADI = "EtkinlikTakip"
 
-# ==========================================
-# 🛠 YARDIMCI FONKSİYONLAR (Gizlilik & Bekleme)
-# ==========================================
+
 def rastgele_bekle(min_s=3, max_s=7):
     """İnsan gibi davranmak için rastgele bekleme"""
     sure = random.uniform(min_s, max_s)
@@ -36,27 +32,25 @@ def get_stealth_driver():
     user_agent = ua.random
 
     opts = Options()
-    opts.add_argument("--headless") # Arka planda çalıştır
+    opts.add_argument("--headless") 
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument(f"user-agent={user_agent}")
     opts.add_argument("--window-size=1920,1080")
     
-    # Selenium izlerini gizle
+   
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option('useAutomationExtension', False)
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
     
-    # Navigator.webdriver bayrağını JavaScript ile sil
+   
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return driver
 
-# ==========================================
-# 📊 GOOGLE SHEETS & TELEGRAM
-# ==========================================
+
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if os.path.exists("credentials.json"):
@@ -73,7 +67,7 @@ def kullanicilari_guncelle(client):
         kayitli_id_listesi = sheet.col_values(1)
         
         try:
-            # Yeni gelen mesajları kontrol et
+           
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
             response = requests.get(url, timeout=10).json()
             
@@ -137,9 +131,7 @@ def herkese_gonder(abone_listesi, site, baslik, tarih, link, gorsel_url):
         except: continue
     print(f"   ✅ {count} kişiye gönderildi.")
 
-# ==========================================
-# 🕷️ SCRAPING FONKSİYONLARI (GÜNCEL HTML'E GÖRE)
-# ==========================================
+
 
 def scrape_coderspace(driver, client, mevcut, aboneler):
     print("\n🔍 Coderspace Taranıyor...")
@@ -148,12 +140,12 @@ def scrape_coderspace(driver, client, mevcut, aboneler):
         rastgele_bekle(5, 8)
         
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Gönderdiğin HTML'e göre ana kart yapısı "event-card"
+        
         kartlar = soup.find_all("div", class_="event-card")
 
-        for kart in kartlar[:8]: # İlk 8 etkinliği kontrol et
+        for kart in kartlar[:8]: 
             try:
-                # 1. Link ve Başlık Çekme (h5 içindeki a tagi)
+                
                 baslik_tag = kart.find("h5").find("a")
                 if not baslik_tag: continue
                 
@@ -162,30 +154,27 @@ def scrape_coderspace(driver, client, mevcut, aboneler):
                 
                 baslik = baslik_tag.text.strip()
 
-                # 2. Kayıt Kontrolü (Daha önce gönderildi mi?)
+                
                 if link in mevcut: continue
 
-                # 3. Durum Kontrolü (Başvurular kapandı mı?)
-                # HTML'de "primary-button--disabled" class'ı varsa etkinlik bitmiştir.
+               
                 disabled_btn = kart.find("a", class_="primary-button--disabled")
                 if disabled_btn:
-                    # Opsiyonel: Eğer sadece aktifleri istiyorsak burada continue diyebiliriz.
-                    # Ancak bazen "Tamamlandı" bilgisini de görmek isteyebilirsiniz.
-                    # Şimdilik pas geçiyoruz (aktif değilse gönderme)
+                  
                     print(f"   ℹ️ Pas geçildi (Başvuru kapalı): {baslik}")
                     continue
 
-                # 4. Görsel Çekme
+              
                 img_tag = kart.find("div", class_="event-card-image").find("img")
                 gorsel = None
                 if img_tag:
-                    # srcset varsa en yüksek çözünürlüğü al, yoksa src
+                
                     if img_tag.get('srcset'):
                         gorsel = img_tag.get('srcset').split(" ")[0] 
                     else:
                         gorsel = img_tag.get('src')
 
-                # 5. Tarih ve Detaylar (ul > li yapısı)
+               
                 tarihler = []
                 info_list = kart.find("ul", class_="event-card-info")
                 if info_list:
@@ -198,7 +187,7 @@ def scrape_coderspace(driver, client, mevcut, aboneler):
                 
                 tarih_str = " | ".join(tarihler) if tarihler else "Detaylar Sitede"
 
-                # 6. Tür (Bootcamp, Hackathon vs.)
+                
                 tur_tag = kart.find("span", class_="event-card-type")
                 if tur_tag:
                     tarih_str = f"[{tur_tag.text.strip()}] {tarih_str}"
@@ -219,7 +208,7 @@ def scrape_anbean(driver, client, mevcut, aboneler):
         rastgele_bekle(5, 8)
         
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Yapı: mini-eventCard
+        #mini-eventCard
         kartlar = soup.find_all("div", class_="mini-eventCard")
 
         for kart in kartlar[:5]:
@@ -238,7 +227,7 @@ def scrape_anbean(driver, client, mevcut, aboneler):
                 img = kart.find("img", class_="mini-eventCard-HeaderImage")
                 gorsel = img.get('srcset', '').split(" ")[0] if img and img.get('srcset') else (img.get('src') if img else None)
                 
-                # Tarihleri topla
+                
                 tarihler = []
                 date_items = kart.find_all("div", class_="mini-eventCard-dateItem")
                 for item in date_items:
@@ -258,12 +247,12 @@ def scrape_anbean(driver, client, mevcut, aboneler):
 def scrape_youthall(driver, client, mevcut, aboneler):
     print("\n🔍 Youthall Taranıyor...")
     try:
-        # İstenilen Link
+        
         driver.get("https://www.youthall.com/tr/events/")
         rastgele_bekle(5, 9)
         
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        # Yapı: div.events
+        
         kartlar = soup.find_all("div", class_="events")
 
         for kart in kartlar[:6]:
@@ -277,17 +266,17 @@ def scrape_youthall(driver, client, mevcut, aboneler):
                 
                 if link in mevcut: continue
                 
-                # Başlık
+               
                 title_div = kart.find("div", class_="events__content__title")
                 baslik = title_div.find("h2").text.strip() if title_div else "Youthall Etkinliği"
                 
-                # Görsel
+               
                 img_div = kart.find("div", class_="events__img")
                 img = img_div.find("img") if img_div else None
                 gorsel = img.get('src') if img else None
                 if gorsel and not gorsel.startswith("http"): gorsel = "https://www.youthall.com" + gorsel
 
-                # Tarih ve Detay
+                
                 details_div = kart.find("div", class_="events__content__details")
                 tarih_str = "Detaylar Sitede"
                 if details_div:
@@ -337,9 +326,7 @@ def scrape_techcareer(driver, client, mevcut, aboneler):
 
     except Exception as e: print(f"⚠️ Techcareer Hatası: {e}")
 
-# ==========================================
-# 🏁 ANA PROGRAM
-# ==========================================
+
 if __name__ == "__main__":
     print("🚀 BOT BAŞLIYOR... (Tüm HTML Yapıları Güncellendi)")
     
@@ -361,4 +348,5 @@ if __name__ == "__main__":
         print("\n✅ Tüm işlemler tamamlandı.")
         
     except Exception as e:
-        print(f"\n🔥 KRİTİK HATA: {e}")
+        print(f"\n KRİTİK HATA: {e}")
+
